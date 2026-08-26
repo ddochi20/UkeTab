@@ -27,10 +27,10 @@ class BasicPitch(ctx: Context) {
         const val N_OVERLAP_FRAMES = 30
         const val OVERLAP_LEN = N_OVERLAP_FRAMES * FFT_HOP
         const val HOP = N_SAMPLES - OVERLAP_LEN     // 36164
-        const val FPS = SR.toDouble() / FFT_HOP     // 86.13
+        val FPS: Double = SR.toDouble() / FFT_HOP   // 86.13
     }
 
-    data class NoteEvent(val startFrame: Int, val endFrame: Int, val midi: Int, val amplitude: Float)
+    data class Detected(val startFrame: Int, val endFrame: Int, val midi: Int, val amplitude: Float)
 
     private val interpreter: Interpreter
     private val noteIdx: Int
@@ -80,7 +80,7 @@ class BasicPitch(ctx: Context) {
                 input.putFloat(if (p < padded.size) padded[p] else 0f)
             }
             input.rewind()
-            interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
+            interpreter.runForMultipleInputsOutputs(arrayOf<Any>(input), outputs)
             for (f in 0 until keep) {
                 val t = frameCursor + f
                 if (t >= totalFrames) break
@@ -99,7 +99,7 @@ class BasicPitch(ctx: Context) {
         framesIn: Array<FloatArray>, onsetsIn: Array<FloatArray>,
         onsetThresh: Float = 0.5f, frameThresh: Float = 0.3f, minNoteLen: Int = 11,
         minMidi: Int = 40, maxMidi: Int = 96, energyTol: Int = 11, melodiaTrick: Boolean = true
-    ): List<NoteEvent> {
+    ): List<Detected> {
         val nFrames = framesIn.size
         if (nFrames < 3) return emptyList()
         val frames = Array(nFrames) { framesIn[it].copyOf() }
@@ -122,7 +122,7 @@ class BasicPitch(ctx: Context) {
         onsetList.reverse() // backwards in time
 
         val remaining = Array(nFrames) { frames[it].copyOf() }
-        val events = ArrayList<NoteEvent>()
+        val events = ArrayList<Detected>()
 
         for (o in onsetList) {
             val start = o[0]; val b = o[1]
@@ -140,7 +140,7 @@ class BasicPitch(ctx: Context) {
                 if (b > 0) remaining[t][b - 1] = 0f
             }
             var sum = 0f; for (t in start until i) sum += frames[t][b]
-            events.add(NoteEvent(start, i, b + MIDI_OFFSET, sum / (i - start)))
+            events.add(Detected(start, i, b + MIDI_OFFSET, sum / (i - start)))
         }
 
         if (melodiaTrick) {
@@ -169,7 +169,7 @@ class BasicPitch(ctx: Context) {
                 val iStart = i + 1 + k
                 if (iEnd - iStart <= minNoteLen) continue
                 var sum = 0f; for (t in iStart until iEnd) sum += frames[t][bb]
-                events.add(NoteEvent(iStart, iEnd, bb + MIDI_OFFSET, sum / (iEnd - iStart)))
+                events.add(Detected(iStart, iEnd, bb + MIDI_OFFSET, sum / (iEnd - iStart)))
             }
         }
         return events.sortedBy { it.startFrame }
@@ -216,7 +216,7 @@ class BasicPitch(ctx: Context) {
     }
 
     /** 이벤트 → 멜로디(최고음) → 16분음표 양자화 → Score (4/4, divisions=4) */
-    fun toMelodyScore(events: List<NoteEvent>, bpm: Double, title: String, minAmp: Float = 0.25f): Score {
+    fun toMelodyScore(events: List<Detected>, bpm: Double, title: String, minAmp: Float = 0.25f): Score {
         val notes = events.filter { it.amplitude >= minAmp }
         require(notes.isNotEmpty()) { "음을 찾지 못했습니다." }
         val framesPer16th = FPS * 60.0 / bpm / 4
@@ -239,14 +239,14 @@ class BasicPitch(ctx: Context) {
         }
         while (seq.isNotEmpty() && seq.first()[0] < 0) seq.removeAt(0)
 
-        val out = ArrayList<com.uketab.app.NoteEvent>()
+        val out = ArrayList<NoteEvent>()
         var measure = 1; var pos = 0
         for (s in seq) {
             var len = s[1]
             while (len > 0) {
                 val d = min(len, 16 - pos)
-                if (s[0] < 0) out.add(com.uketab.app.NoteEvent(null, d, measure, false, "rest"))
-                else out.add(com.uketab.app.NoteEvent(s[0], d, measure, false, MusicXmlParser.noteName(s[0])))
+                if (s[0] < 0) out.add(NoteEvent(null, d, measure, false, "rest"))
+                else out.add(NoteEvent(s[0], d, measure, false, MusicXmlParser.noteName(s[0])))
                 pos += d; len -= d
                 if (pos >= 16) { pos = 0; measure++ }
             }

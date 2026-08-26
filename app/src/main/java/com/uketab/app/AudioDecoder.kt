@@ -14,13 +14,13 @@ object AudioDecoder {
     fun decode(ctx: Context, uri: Uri, maxSeconds: Int = 600, onProgress: (Float) -> Unit = {}): FloatArray {
         val ex = MediaExtractor()
         ex.setDataSource(ctx, uri, null)
-        var track = -1; var fmt: MediaFormat? = null
+        var track = -1; var found: MediaFormat? = null
         for (i in 0 until ex.trackCount) {
             val f = ex.getTrackFormat(i)
-            if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) { track = i; fmt = f; break }
+            if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) { track = i; found = f; break }
         }
-        require(track >= 0 && fmt != null) { "오디오 트랙을 찾지 못했습니다." }
-        val fmt: MediaFormat = fmt
+        require(track >= 0 && found != null) { "오디오 트랙을 찾지 못했습니다." }
+        val fmt: MediaFormat = found
         ex.selectTrack(track)
         val durationUs = if (fmt.containsKey(MediaFormat.KEY_DURATION)) fmt.getLong(MediaFormat.KEY_DURATION) else 0L
 
