@@ -82,6 +82,28 @@ fun UkeTabApp() {
         }
     }
 
+    fun transcribeAudio(file: File) {
+        scope.launch {
+            busy = true; status = "음원을 서버로 보내 멜로디 추출 중... (곡 길이에 따라 1~3분)"
+            try {
+                val s = withContext(Dispatchers.IO) {
+                    val xml = OmrClient(serverUrl).transcribe(file)
+                    MusicXmlParser.parse(xml.byteInputStream(), "audio.musicxml")
+                }
+                score = s; status = "추출 완료 — 음표 ${s.notes.size}개 (자동 채보라 오류가 있을 수 있어요)"
+            } catch (e: Exception) { status = "추출 실패: ${e.message}" }
+            busy = false
+        }
+    }
+
+    val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            val name = queryName(ctx, it)
+            val f = File(ctx.cacheDir, "photos/$name").apply { parentFile?.mkdirs() }
+            ctx.contentResolver.openInputStream(it)!!.use { inp -> f.outputStream().use { inp.copyTo(it) } }
+            transcribeAudio(f)
+        }
+    }
     val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { loadFromUri(it) }
     }
@@ -114,6 +136,8 @@ fun UkeTabApp() {
                 Button(onClick = { askCamera.launch(Manifest.permission.CAMERA) }, enabled = !busy) { Text("사진 찍기") }
                 OutlinedButton(onClick = { pickImage.launch("image/*") }, enabled = !busy) { Text("갤러리") }
             }
+            Spacer(Modifier.height(6.dp))
+            Button(onClick = { pickAudio.launch("audio/*") }, enabled = !busy) { Text("🎧 MP3 음원에서 타브 만들기") }
             Spacer(Modifier.height(8.dp))
             TuningSelector(tuning) { tuning = it }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -153,7 +177,7 @@ fun UkeTabApp() {
             title = { Text("OMR 서버 주소") },
             text = {
                 Column {
-                    Text("악보 사진 인식은 server/omr_server.py 를 실행한 PC 주소가 필요합니다.")
+                    Text("악보 사진 인식과 MP3 채보는 server/omr_server.py 를 실행한 PC 주소가 필요합니다.")
                     OutlinedTextField(value = serverUrl, onValueChange = { serverUrl = it }, singleLine = true)
                 }
             })
